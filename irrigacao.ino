@@ -1,112 +1,78 @@
-#include <SoftwareSerial.h>
+int sensor1 = A0;
+int sensor2 = A1;
+int sensor3 = A2;
+int sensor4 = A3;
 
-// Bluetooth RX/TX
-SoftwareSerial BT(10, 11); // RX, TX
+int releBomba = 8;    // Pino do relé
 
-// Sensores
-int sensores[4] = {A0, A1, A2, A3};
-
-// Saída da bomba via relé
-int releBomba = 8;
-
-// Calibração da umidade
-int secoMin = 600;  
-int umidoMax = 400; 
-
-// Converte a leitura do sensor para porcentagem
-int converteParaUmidade(int leitura) {
-  int umidade = map(leitura, secoMin, umidoMax, 0, 100);
-  return constrain(umidade, 0, 100);
-}
-
-// Classificação da condição do solo
-String classificaEstado(int umidade) {
-  if (umidade < 30) return "SECO";
-  if (umidade < 60) return "IDEAL";
-  return "UMIDO";
-}
+// LIMITES DE UMIDADE
+int limiteSeco = 550;   // acima disso = solo seco
+int limiteUmido = 450;  // abaixo disso = solo úmido
 
 void setup() {
-  Serial.begin(9600);
-  BT.begin(9600);
-
+  Serial.begin(9600);         
   pinMode(releBomba, OUTPUT);
-  digitalWrite(releBomba, HIGH); // relé desligado (ativo em LOW)
+  digitalWrite(releBomba, HIGH);  // Relé desligado (ativa com LOW)
 
-  Serial.println("Sistema iniciado.");
-  BT.println("Sistema iniciado.");
+  delay(2000);
+  Serial.println("Sistema de Irrigacao Iniciado");
 }
 
-void ativaBomba(int vaso) {
-  Serial.print("Bomba ativada no vaso ");
-  Serial.println(vaso + 1);
 
-  BT.print("Bomba ativada no vaso ");
-  BT.println(vaso + 1);
-
-  digitalWrite(releBomba, LOW);   // liga bomba
-  delay(8000);                    // tempo de rega
-  digitalWrite(releBomba, HIGH);  // desliga bomba
-
-  Serial.println("Rega concluída.");
-  BT.println("Rega concluída.");
+// Leitura dde sensores
+void lerSensores(int &s1, int &s2, int &s3, int &s4) {
+  s1 = analogRead(sensor1);
+  s2 = analogRead(sensor2);
+  s3 = analogRead(sensor3);
+  s4 = analogRead(sensor4);
 }
 
+// função para analisar o solo
+bool soloEstaSeco(int s1, int s2, int s3, int s4) {
+  if (s1 > limiteSeco || s2 > limiteSeco || s3 > limiteSeco || s4 > limiteSeco) {
+    return true;
+  }
+  return false;
+}
+
+
+// LOOP PRINCIPAL
 void loop() {
 
-  Serial.println("----- NOVA LEITURA -----");
-  BT.println("----- NOVA LEITURA -----");
+  int s1, s2, s3, s4;
+  lerSensores(s1, s2, s3, s4);
 
-  for (int i = 0; i < 4; i++) {
-
-    int leitura = analogRead(sensores[i]);
-    int umidade = converteParaUmidade(leitura);
-    String estado = classificaEstado(umidade);
-
-    // Envio Serial
-    Serial.print("VASO ");
-    Serial.println(i + 1);
-
-    Serial.print("Leitura: ");
-    Serial.println(leitura);
-
-    Serial.print("Umidade: ");
-    Serial.print(umidade);
-    Serial.println("%");
-
-    Serial.print("Estado: ");
-    Serial.println(estado);
-    Serial.println();
-
-    // Envio Bluetooth
-    BT.print("VASO ");
-    BT.println(i + 1);
-
-    BT.print("Leitura: ");
-    BT.println(leitura);
-
-    BT.print("Umidade: ");
-    BT.print(umidade);
-    BT.println("%");
-
-    BT.print("Estado: ");
-    BT.println(estado);
-    BT.println();
-
-    if (estado == "SECO") {
-      Serial.println("Ação: REGAR");
-      BT.println("Ação: REGAR");
-      ativaBomba(i);
-    } else {
-      Serial.println("Ação: Nenhuma");
-      BT.println("Ação: Nenhuma");
-    }
-
-    delay(500);
+  if (soloEstaSeco(s1, s2, s3, s4)) {
+    digitalWrite(releBomba, LOW);   // Liga bomba
+  } else {
+    digitalWrite(releBomba, HIGH);  // Desliga bomba
   }
 
-  Serial.println("Próxima leitura em 5 min...\n");
-  BT.println("Próxima leitura em 5 min...\n");
 
-  delay(5 * 60 * 1000);
+  // comandos via bluetooth
+  if (Serial.available()) {
+    String comando = Serial.readStringUntil('\n');
+
+    comando.trim();
+    comando.toUpperCase();
+
+    if (comando == "LIGA") {
+      digitalWrite(releBomba, LOW);
+      Serial.println("Bomba LIGADA pelo Bluetooth");
+    }
+
+    if (comando == "DESLIGA") {
+      digitalWrite(releBomba, HIGH);
+      Serial.println("Bomba DESLIGADA pelo Bluetooth");
+    }
+
+    if (comando == "STATUS") {
+      Serial.print("Vaso 1: "); Serial.println(s1);
+      Serial.print("Vaso 2: "); Serial.println(s2);
+      Serial.print("Vaso 3: "); Serial.println(s3);
+      Serial.print("Vaso 4: "); Serial.println(s4);
+    }
+  }
+
+  delay(1000);
 }
